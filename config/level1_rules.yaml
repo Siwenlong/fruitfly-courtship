@@ -1,0 +1,23 @@
+fps:
+min_keypoint_score: 0.3
+
+wing_extension:
+  angle_deg: 55.0
+  asymmetry_deg: 25.0
+  min_duration_s: 0.2
+  merge_gap_s: 0.1
+
+chasing:
+  max_distance_body_lengths: 4.0
+  max_heading_error_deg: 60.0
+  min_speed_body_lengths_s: 0.25
+  min_duration_s: 0.5
+  merge_gap_s: 0.2
+
+copulation_attempt:
+  max_distance_body_lengths: 1.5
+  max_male_to_female_posterior_angle_deg: 70.0
+  min_female_posterior_angle_deg: 120.0
+  max_relative_speed_body_lengths_s: 1.5
+  min_duration_s: 0.1
+  merge_gap_s: 0.2
