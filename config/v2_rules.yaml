@@ -1,0 +1,58 @@
+fps:
+min_keypoint_score: 0.3
+
+orientation:
+  max_distance_body_lengths: 5.0
+  max_heading_error_deg: 70.0
+  min_duration_s: 0.2
+  merge_gap_s: 0.2
+
+wing_extension:
+  angle_deg: 55.0
+  asymmetry_deg: 25.0
+  min_duration_s: 0.2
+  merge_gap_s: 0.1
+
+chasing:
+  max_distance_body_lengths: 4.0
+  max_heading_error_deg: 60.0
+  min_speed_body_lengths_s: 0.25
+  min_duration_s: 0.5
+  merge_gap_s: 0.2
+
+tapping:
+  max_front_leg_distance_body_lengths: 0.45
+  min_duration_s: 0.05
+  merge_gap_s: 0.1
+
+wing_vibration:
+  min_wing_angle_deg: 55.0
+  min_wing_angle_change_deg_s: 250.0
+  min_duration_s: 0.1
+  merge_gap_s: 0.1
+
+licking:
+  max_mouth_to_female_posterior_body_lengths: 0.6
+  min_duration_s: 0.1
+  merge_gap_s: 0.1
+
+abdomen_bending:
+  max_bending_angle_deg: 145.0
+  min_duration_s: 0.1
+  merge_gap_s: 0.1
+
+copulation_attempt:
+  max_distance_body_lengths: 1.5
+  max_male_to_female_posterior_angle_deg: 70.0
+  min_female_posterior_angle_deg: 120.0
+  max_relative_speed_body_lengths_s: 1.5
+  min_duration_s: 0.1
+  merge_gap_s: 0.2
+
+copulation:
+  max_distance_body_lengths: 1.2
+  max_male_to_female_posterior_angle_deg: 60.0
+  min_female_posterior_angle_deg: 130.0
+  max_relative_speed_body_lengths_s: 0.25
+  min_duration_s: 1.0
+  merge_gap_s: 0.5

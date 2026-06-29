@@ -7,8 +7,23 @@ from fruitfly_courtship.intervals import EVENT_COLUMNS, frames_to_events
 from fruitfly_courtship.pose_io import infer_fps
 
 
+def _series(features: pd.DataFrame, column: str) -> pd.Series:
+    if column in features.columns:
+        return features[column]
+    return pd.Series(float("nan"), index=features.index)
+
+
 def _valid_tracking(features: pd.DataFrame, min_keypoint_score: float) -> pd.Series:
     return features["tracking_min_score"].ge(min_keypoint_score)
+
+
+def _orientation_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.orientation
+    return (
+        _series(features, "distance_body_lengths").le(rule.max_distance_body_lengths)
+        & _series(features, "heading_error_deg").le(rule.max_heading_error_deg)
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
 
 
 def _wing_extension_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
@@ -29,11 +44,68 @@ def _chasing_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
     )
 
 
+def _tapping_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.tapping
+    return (
+        _series(features, "front_leg_to_female_body_body_lengths").le(
+            rule.max_front_leg_distance_body_lengths
+        )
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
+
+
+def _wing_vibration_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.wing_vibration
+    extended_wing_angle = pd.concat(
+        [
+            _series(features, "left_wing_angle_deg"),
+            _series(features, "right_wing_angle_deg"),
+        ],
+        axis=1,
+    ).max(axis=1)
+    return (
+        extended_wing_angle.ge(rule.min_wing_angle_deg)
+        & _series(features, "wing_angle_change_deg_s").ge(rule.min_wing_angle_change_deg_s)
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
+
+
+def _licking_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.licking
+    return (
+        _series(features, "mouth_to_female_posterior_body_lengths").le(
+            rule.max_mouth_to_female_posterior_body_lengths
+        )
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
+
+
+def _abdomen_bending_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.abdomen_bending
+    return (
+        _series(features, "abdomen_bending_angle_deg").le(rule.max_bending_angle_deg)
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
+
+
 def _copulation_attempt_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
     rule = config.copulation_attempt
     return (
         features["copulation_distance_body_lengths"].le(rule.max_distance_body_lengths)
         & features["male_to_female_posterior_angle_deg"].le(rule.max_male_to_female_posterior_angle_deg)
+        & features["female_posterior_angle_deg"].ge(rule.min_female_posterior_angle_deg)
+        & features["relative_speed_body_lengths_s"].le(rule.max_relative_speed_body_lengths_s)
+        & _valid_tracking(features, config.min_keypoint_score)
+    )
+
+
+def _copulation_mask(features: pd.DataFrame, config: CourtshipConfig) -> pd.Series:
+    rule = config.copulation
+    return (
+        features["copulation_distance_body_lengths"].le(rule.max_distance_body_lengths)
+        & features["male_to_female_posterior_angle_deg"].le(
+            rule.max_male_to_female_posterior_angle_deg
+        )
         & features["female_posterior_angle_deg"].ge(rule.min_female_posterior_angle_deg)
         & features["relative_speed_body_lengths_s"].le(rule.max_relative_speed_body_lengths_s)
         & _valid_tracking(features, config.min_keypoint_score)
@@ -49,12 +121,34 @@ def detect_behaviors(features: pd.DataFrame, config: CourtshipConfig) -> pd.Data
         event_tables.append(
             frames_to_events(
                 frames=ordered,
+                mask=_orientation_mask(ordered, config),
+                behavior="orientation",
+                fps=fps,
+                min_duration_s=config.orientation.min_duration_s,
+                merge_gap_s=config.orientation.merge_gap_s,
+                method="rules_v2",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
                 mask=_wing_extension_mask(ordered, config),
                 behavior="wing_extension",
                 fps=fps,
                 min_duration_s=config.wing_extension.min_duration_s,
                 merge_gap_s=config.wing_extension.merge_gap_s,
                 method="rules_v1",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
+                mask=_tapping_mask(ordered, config),
+                behavior="tapping",
+                fps=fps,
+                min_duration_s=config.tapping.min_duration_s,
+                merge_gap_s=config.tapping.merge_gap_s,
+                method="rules_v2",
             )
         )
         event_tables.append(
@@ -71,12 +165,56 @@ def detect_behaviors(features: pd.DataFrame, config: CourtshipConfig) -> pd.Data
         event_tables.append(
             frames_to_events(
                 frames=ordered,
+                mask=_wing_vibration_mask(ordered, config),
+                behavior="wing_vibration",
+                fps=fps,
+                min_duration_s=config.wing_vibration.min_duration_s,
+                merge_gap_s=config.wing_vibration.merge_gap_s,
+                method="rules_v2",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
+                mask=_licking_mask(ordered, config),
+                behavior="licking",
+                fps=fps,
+                min_duration_s=config.licking.min_duration_s,
+                merge_gap_s=config.licking.merge_gap_s,
+                method="rules_v2",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
+                mask=_abdomen_bending_mask(ordered, config),
+                behavior="abdomen_bending",
+                fps=fps,
+                min_duration_s=config.abdomen_bending.min_duration_s,
+                merge_gap_s=config.abdomen_bending.merge_gap_s,
+                method="rules_v2",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
                 mask=_copulation_attempt_mask(ordered, config),
                 behavior="copulation_attempt",
                 fps=fps,
                 min_duration_s=config.copulation_attempt.min_duration_s,
                 merge_gap_s=config.copulation_attempt.merge_gap_s,
                 method="rules_v1",
+            )
+        )
+        event_tables.append(
+            frames_to_events(
+                frames=ordered,
+                mask=_copulation_mask(ordered, config),
+                behavior="copulation",
+                fps=fps,
+                min_duration_s=config.copulation.min_duration_s,
+                merge_gap_s=config.copulation.merge_gap_s,
+                method="rules_v2",
             )
         )
 

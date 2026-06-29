@@ -8,6 +8,9 @@ import pandas as pd
 
 REQUIRED_LEVEL1_KEYPOINTS = ["head", "thorax", "abdomen_tip", "left_wing_tip", "right_wing_tip"]
 REQUIRED_COLUMNS = {"video_id", "frame", "time_s", "individual", "keypoint", "x", "y", "score"}
+LEFT_FRONT_LEG_KEYPOINTS = ["left_front_leg_tip", "left_foreleg_tip", "left_front_tarsus"]
+RIGHT_FRONT_LEG_KEYPOINTS = ["right_front_leg_tip", "right_foreleg_tip", "right_front_tarsus"]
+MOUTH_KEYPOINTS = ["proboscis", "mouthparts", "mouth"]
 FRAME_ERROR = "Pose table frame values must be finite, integer-valued, and non-negative"
 TIME_ERROR = "Pose table time_s values must be finite and non-negative"
 
@@ -43,6 +46,14 @@ def _point(frame_rows: pd.DataFrame, individual: str, keypoint: str) -> np.ndarr
     return np.array([float(row["x"]), float(row["y"])], dtype=float)
 
 
+def _point_any(frame_rows: pd.DataFrame, individual: str, keypoints: list[str]) -> np.ndarray:
+    for keypoint in keypoints:
+        point = _point(frame_rows, individual, keypoint)
+        if np.isfinite(point).all():
+            return point
+    return np.array([np.nan, np.nan], dtype=float)
+
+
 def _score(frame_rows: pd.DataFrame, individual: str, keypoint: str) -> float:
     match = frame_rows[
         (frame_rows["individual"] == individual)
@@ -63,6 +74,18 @@ def _safe_divide(value: float, denominator: float) -> float:
     if denominator == 0.0 or np.isnan(value) or np.isnan(denominator):
         return float("nan")
     return float(value / denominator)
+
+
+def _min_distance(points_a: list[np.ndarray], points_b: list[np.ndarray]) -> float:
+    distances = [
+        _distance(point_a, point_b)
+        for point_a in points_a
+        for point_b in points_b
+        if np.isfinite(point_a).all() and np.isfinite(point_b).all()
+    ]
+    if not distances:
+        return float("nan")
+    return float(min(distances))
 
 
 def _validate_grouping_keys(pose: pd.DataFrame) -> pd.DataFrame:
@@ -104,6 +127,11 @@ def _frame_features(frame_rows: pd.DataFrame, video_id: str, frame: int, time_s:
     male_abdomen = _point(frame_rows, "male", "abdomen_tip")
     male_left_wing = _point(frame_rows, "male", "left_wing_tip")
     male_right_wing = _point(frame_rows, "male", "right_wing_tip")
+    male_left_front_leg = _point_any(frame_rows, "male", LEFT_FRONT_LEG_KEYPOINTS)
+    male_right_front_leg = _point_any(frame_rows, "male", RIGHT_FRONT_LEG_KEYPOINTS)
+    male_mouth = _point_any(frame_rows, "male", MOUTH_KEYPOINTS)
+    if not np.isfinite(male_mouth).all():
+        male_mouth = male_head
 
     female_head = _point(frame_rows, "female", "head")
     female_thorax = _point(frame_rows, "female", "thorax")
@@ -116,6 +144,7 @@ def _frame_features(frame_rows: pd.DataFrame, video_id: str, frame: int, time_s:
     left_wing_angle = angle_deg(male_left_wing - male_thorax, male_axis)
     right_wing_angle = angle_deg(male_right_wing - male_thorax, male_axis)
     wing_asymmetry = abs(left_wing_angle - right_wing_angle)
+    abdomen_bending_angle = angle_deg(male_head - male_thorax, male_abdomen - male_thorax)
 
     male_to_female = female_thorax - male_thorax
     distance_px = _distance(male_thorax, female_thorax)
@@ -128,6 +157,15 @@ def _frame_features(frame_rows: pd.DataFrame, video_id: str, frame: int, time_s:
     copulation_distance_body_lengths = _safe_divide(copulation_distance_px, male_body_length_px)
     male_to_female_posterior_angle = angle_deg(male_axis, male_to_female_posterior)
     female_posterior_angle = angle_deg(female_axis, female_posterior_to_male)
+    front_leg_distance_px = _min_distance(
+        [male_left_front_leg, male_right_front_leg],
+        [female_head, female_thorax, female_abdomen],
+    )
+    front_leg_distance_body_lengths = _safe_divide(front_leg_distance_px, male_body_length_px)
+    mouth_distance_body_lengths = _safe_divide(
+        _distance(male_mouth, female_abdomen),
+        male_body_length_px,
+    )
 
     scores = [
         _score(frame_rows, individual, keypoint)
@@ -148,6 +186,9 @@ def _frame_features(frame_rows: pd.DataFrame, video_id: str, frame: int, time_s:
         "left_wing_angle_deg": left_wing_angle,
         "right_wing_angle_deg": right_wing_angle,
         "wing_asymmetry_deg": wing_asymmetry,
+        "front_leg_to_female_body_body_lengths": front_leg_distance_body_lengths,
+        "mouth_to_female_posterior_body_lengths": mouth_distance_body_lengths,
+        "abdomen_bending_angle_deg": abdomen_bending_angle,
         "distance_body_lengths": distance_body_lengths,
         "heading_error_deg": heading_error,
         "copulation_distance_body_lengths": copulation_distance_body_lengths,
@@ -192,6 +233,7 @@ def extract_features(pose: pd.DataFrame) -> pd.DataFrame:
     features = pd.DataFrame(feature_rows).sort_values(["video_id", "frame"]).reset_index(drop=True)
     features["male_speed_body_lengths_s"] = 0.0
     features["relative_speed_body_lengths_s"] = 0.0
+    features["wing_angle_change_deg_s"] = 0.0
 
     for _, index in features.groupby("video_id", sort=False).groups.items():
         ordered_index = list(index)
@@ -208,12 +250,16 @@ def extract_features(pose: pd.DataFrame) -> pd.DataFrame:
             + (group["female_thorax_y"] - group["male_thorax_y"]).pow(2)
         )
         relative_speed = distance_px.diff().abs() / dt / body_length
+        extended_wing_angle = group[["left_wing_angle_deg", "right_wing_angle_deg"]].max(axis=1)
+        wing_angle_change = extended_wing_angle.diff().abs() / dt
 
         if not group.empty:
             male_speed.iloc[0] = 0.0
             relative_speed.iloc[0] = 0.0
+            wing_angle_change.iloc[0] = 0.0
 
         features.loc[group.index, "male_speed_body_lengths_s"] = male_speed.to_numpy()
         features.loc[group.index, "relative_speed_body_lengths_s"] = relative_speed.to_numpy()
+        features.loc[group.index, "wing_angle_change_deg_s"] = wing_angle_change.to_numpy()
 
     return features

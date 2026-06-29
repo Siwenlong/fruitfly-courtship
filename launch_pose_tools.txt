@@ -1,0 +1,43 @@
+DeepLabCut 启动命令
+====================
+
+方式 1：直接启动
+
+/Users/lxl/.venvs/deeplabcut/bin/python -m deeplabcut
+
+方式 2：先进入 DeepLabCut 环境，再启动
+
+source /Users/lxl/.venvs/deeplabcut/bin/activate
+python -m deeplabcut
+
+
+SLEAP 启动命令
+==============
+
+方式 1：直接启动 GUI
+
+/Users/lxl/.local/bin/sleap
+
+方式 2：新终端中直接启动
+
+sleap
+
+方式 3：打开标注界面
+
+sleap label
+
+
+检查版本
+========
+
+DeepLabCut:
+
+/Users/lxl/.venvs/deeplabcut/bin/python - <<'PY'
+import deeplabcut
+print(deeplabcut.__version__)
+PY
+
+SLEAP:
+
+sleap --version
+sleap system

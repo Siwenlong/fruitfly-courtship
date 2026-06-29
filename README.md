@@ -1,10 +1,17 @@
 # Fruit Fly Courtship Analysis
 
-This project detects Level 1 male Drosophila courtship behaviors from tracked pose coordinates:
+This project detects male Drosophila courtship behaviors from tracked pose coordinates.
+The v2 rule set follows the common courtship sequence:
 
-- `wing_extension`
+- `orientation`
 - `chasing`
+- `tapping`
+- `wing_extension`
+- `wing_vibration`
+- `licking`
+- `abdomen_bending`
 - `copulation_attempt`
+- `copulation`
 
 The pipeline expects pose tracking to be performed upstream with SLEAP, DeepLabCut, or another tracker. Export or convert the tracked coordinates into the long CSV format below.
 
@@ -33,6 +40,17 @@ left_wing_tip
 right_wing_tip
 ```
 
+Optional male keypoints improve v2 calls:
+
+```text
+left_front_leg_tip
+right_front_leg_tip
+proboscis
+```
+
+Accepted aliases include `left_foreleg_tip`, `right_foreleg_tip`, `left_front_tarsus`,
+`right_front_tarsus`, `mouthparts`, and `mouth`.
+
 Example rows:
 
 ```csv
@@ -54,12 +72,12 @@ Install development dependencies:
 python -m pip install -e ".[dev]"
 ```
 
-Run the Level 1 detector:
+Run the v2 courtship detector:
 
 ```bash
 fruitfly-courtship analyze \
   --pose-csv data/pose/fly_pose.csv \
-  --config config/level1_rules.yaml \
+  --config config/v2_rules.yaml \
   --out-dir outputs
 ```
 
@@ -68,7 +86,7 @@ Equivalent module command:
 ```bash
 python -m fruitfly_courtship.cli analyze \
   --pose-csv data/pose/fly_pose.csv \
-  --config config/level1_rules.yaml \
+  --config config/v2_rules.yaml \
   --out-dir outputs
 ```
 
@@ -96,15 +114,23 @@ video_id,behavior,event_count,total_duration_s,latency_to_first_s,mean_event_dur
 
 ## Rule Tuning
 
-Edit `config/level1_rules.yaml` to tune duration, distance, angle, and tracking-confidence thresholds. For a first validation pass, adjust one threshold at a time and inspect the generated timeline PNGs against manually reviewed clips.
+Edit `config/v2_rules.yaml` to tune duration, distance, angle, and tracking-confidence thresholds. For a first validation pass, adjust one threshold at a time and inspect the generated timeline PNGs against manually reviewed clips.
 
 ## Validation Recommendation
 
 Start with 5 to 10 videos and manually review obvious examples of:
 
-- `wing_extension`
+- `orientation`
 - `chasing`
+- `tapping`
+- `wing_extension`
+- `wing_vibration`
+- `licking`
+- `abdomen_bending`
 - `copulation_attempt`
+- `copulation`
 - background intervals with no target behavior
 
-Treat `orientation`, `tapping`, `licking`, `abdomen_bending`, `copulation`, and `courtship_song` as annotation labels until the video resolution, frame rate, and optional audio are sufficient to detect them reliably.
+Treat `wing_vibration` as a video proxy for courtship song unless synchronized audio is available.
+`tapping`, `licking`, and `abdomen_bending` are most reliable when the optional front-leg,
+mouth/proboscis, and abdomen keypoints are labeled consistently.

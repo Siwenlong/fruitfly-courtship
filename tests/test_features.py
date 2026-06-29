@@ -39,6 +39,29 @@ def _frame_rows(frame: int, time_s: float, male_y: float) -> list[dict[str, obje
     return rows
 
 
+def _v2_frame_rows(frame: int, time_s: float) -> list[dict[str, object]]:
+    rows = _frame_rows(frame, time_s, 1.0)
+    extra_points = {
+        ("male", "left_front_leg_tip"): (0.0, 3.8),
+        ("male", "right_front_leg_tip"): (0.2, 3.7),
+        ("male", "proboscis"): (0.0, 3.2),
+    }
+    for (individual, keypoint), (x, y) in extra_points.items():
+        rows.append(
+            {
+                "video_id": "fly_001",
+                "frame": frame,
+                "time_s": time_s,
+                "individual": individual,
+                "keypoint": keypoint,
+                "x": x,
+                "y": y,
+                "score": 0.95,
+            }
+        )
+    return rows
+
+
 def _with_video_id(rows: list[dict[str, object]], video_id: str) -> list[dict[str, object]]:
     return [{**row, "video_id": video_id} for row in rows]
 
@@ -80,6 +103,45 @@ def test_extract_features_computes_wing_and_chasing_geometry():
     assert first["male_to_female_posterior_angle_deg"] == pytest.approx(0.0)
     assert first["female_posterior_angle_deg"] == pytest.approx(180.0)
     assert first["tracking_min_score"] == pytest.approx(0.95)
+
+
+def test_extract_features_computes_v2_optional_behavior_geometry():
+    pose = pd.DataFrame(_v2_frame_rows(0, 0.0) + _v2_frame_rows(1, 0.1))
+
+    features = extract_features(pose)
+
+    first = features.iloc[0]
+    assert first["front_leg_to_female_body_body_lengths"] == pytest.approx(0.1)
+    assert first["mouth_to_female_posterior_body_lengths"] == pytest.approx(0.1)
+    assert first["abdomen_bending_angle_deg"] == pytest.approx(180.0)
+    assert features.iloc[0]["wing_angle_change_deg_s"] == pytest.approx(0.0)
+
+
+def test_extract_features_uses_head_as_licking_proxy_when_proboscis_missing():
+    pose = pd.DataFrame(_frame_rows(0, 0.0, 1.0))
+
+    features = extract_features(pose)
+
+    assert features.iloc[0]["mouth_to_female_posterior_body_lengths"] == pytest.approx(0.5)
+    assert math.isnan(features.iloc[0]["front_leg_to_female_body_body_lengths"])
+
+
+def test_extract_features_computes_wing_angle_change_rate():
+    first = _frame_rows(0, 0.0, 1.0)
+    second = _frame_rows(1, 0.1, 1.0)
+    for row in first:
+        if row["individual"] == "male" and row["keypoint"] == "right_wing_tip":
+            row["x"] = 0.5
+            row["y"] = 1.9
+    for row in second:
+        if row["individual"] == "male" and row["keypoint"] == "right_wing_tip":
+            row["x"] = 2.0
+            row["y"] = 1.0
+    pose = pd.DataFrame(first + second)
+
+    features = extract_features(pose)
+
+    assert features.iloc[1]["wing_angle_change_deg_s"] > 500.0
 
 
 def test_extract_features_propagates_missing_keypoint_to_angles():
